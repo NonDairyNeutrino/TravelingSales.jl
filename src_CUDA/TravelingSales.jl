@@ -28,11 +28,11 @@ function fitness(adjacencyMatrix :: Matrix)
     return position -> fitness(adjacencyMatrix, position)
 end
 
-fitnessVector = fitness(adjacencyMatrix).(positionVector)
+fitnessVector = fitness(adjacencyMatrix).(positionVector) # |> cu
 # set masses
 best       = minimum(fitnessVector)
 worst      = maximum(fitnessVector)
-massVector = (fitnessVector .- worst) / (best - worst)
+massVector = (fitnessVector .- worst) / (best - worst) # |> cu
 totalMass  = sum(massVector)
 massVector ./= totalMass
 
