@@ -34,3 +34,5 @@ massVector = (fitnessVector .- worst) / (best - worst)
 totalMass  = sum(massVector)
 massVector ./= totalMass
 
+hammingDistance(x :: Vector, y :: Vector) = sum(x .!= y)
+distance(x :: Vector, y :: Vector) = max(0, hammingDistance(x, y) - 1) # seems close enough
