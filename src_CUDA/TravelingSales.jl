@@ -1,15 +1,19 @@
 using Random: randperm
+using CUDA
+using BenchmarkTools
 
-const dimension = 10
+const dimension = 10^4
 const agentCount = 10
-const adjacencyMatrix = rand(1:10, dimension, dimension)
+const adjacencyMatrix = CUDA.rand(dimension, dimension)
+println("summary: ", summary(adjacencyMatrix), " size: ", CUDA.sizeof(adjacencyMatrix) / 10^6)
 const maxDistance = dimension - 1
 const G = 0.5
 
 # generate initial positions
-positionVector = randperm.(fill(dimension, agentCount)) # |> cu
+positionMatrix = randperm.(fill(UInt16(dimension), agentCount)) |> stack |> cu
+println("summary: ", summary(positionMatrix), " size: ", CUDA.sizeof(positionMatrix) / 10^6)
 # generate initial velocities
-velocityVector = rand(1:dimension, agentCount) # |> cu
+# velocityVector = rand(1:dimension, agentCount) #|> cu
 
 # define how to get tour distance
 """
@@ -17,30 +21,32 @@ velocityVector = rand(1:dimension, agentCount) # |> cu
 
 Get the fitness of a given tour for a given adjacencyMatrix.
 """
-function fitness(adjacencyMatrix :: Matrix{T}, position :: Vector) :: T where T <: Real
-    # get sequence of index pairs
-    indexPairIterator = zip(position[1:end-1], position[2:end])
-    # for whatever reason, `view` takes more time and memory than `getindex`
-    return sum((indexPair -> adjacencyMatrix[indexPair...]).(indexPairIterator))[1]
+function fitness(adjacencyMatrix :: Union{Matrix{T}, CuArray}, position :: Union{Vector, CuArray}) #= :: T =# where T <: Real
+    head = view(position, 1:length(position)-1)
+    tail = view(position, 2:length(position))
+    idx  = CartesianIndex.(head, tail)
+    return sum(view(adjacencyMatrix, idx))
 end
 
-function fitness(adjacencyMatrix :: Matrix)
+function fitness(adjacencyMatrix :: Union{Matrix, CuArray})
     return position -> fitness(adjacencyMatrix, position)
 end
 
-fitnessVector = fitness(adjacencyMatrix).(positionVector) # |> cu
-# set masses
-best       = minimum(fitnessVector)
-worst      = maximum(fitnessVector)
-massVector = (fitnessVector .- worst) / (best - worst) # |> cu
-totalMass  = sum(massVector)
-massVector ./= totalMass
+display(@btime fitness(adjacencyMatrix, view(positionMatrix, 1)))
 
-# search space
-hammingDistance(x :: Vector, y :: Vector) = sum(x .!= y)
-distance(x :: Vector, y :: Vector) = max(0, hammingDistance(x, y) - 1) # seems close enough
+# fitnessVector = fitness(adjacencyMatrix).(positionMatrix) #|> cu
+# # set masses
+# best       = minimum(fitnessVector)
+# worst      = maximum(fitnessVector)
+# massVector = (fitnessVector .- worst) / (best - worst) #|> cu
+# totalMass  = sum(massVector)
+# massVector ./= totalMass
 
-# physics
-distanceMatrix           = (tpl -> distance(tpl...)).(Iterators.product(positionVector, positionVector))
-normalizedDistanceMatrix = 0.5 .+ distanceMatrix / (2 * maxDistance)
-accelerationMatrix       = ceil.(Int, rand(agentCount, agentCount) .* G .* stack(fill(massVector, agentCount)) .* distanceMatrix ./ normalizedDistanceMatrix)
+# # search space
+# hammingDistance(x :: Vector, y :: Vector) = sum(x .!= y)
+# distance(x :: Vector, y :: Vector) = max(0, hammingDistance(x, y) - 1) # seems close enough
+
+# # physics
+# distanceMatrix           = (tpl -> distance(tpl...)).(Iterators.product(positionMatrix, positionMatrix))
+# normalizedDistanceMatrix = 0.5 .+ distanceMatrix / (2 * maxDistance)
+# accelerationMatrix       = ceil.(Int, rand(agentCount, agentCount) .* G .* stack(fill(massVector, agentCount)) .* distanceMatrix ./ normalizedDistanceMatrix)
